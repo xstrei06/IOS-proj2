@@ -1,7 +1,8 @@
-cmake_minimum_required(VERSION 3.20)
-project(projekt2_ios C)
+cmake_minimum_required(VERSION 3.16)
+project(ios-proj2 C)
 
 set(CMAKE_C_STANDARD 99)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror -pedantic")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -Wall -Wextra -Werror -pedantic -lpthread")
 
-add_executable(projekt2_ios proj2.c)
+add_executable(ios-proj2 proj2.c)
+target_link_libraries(ios-proj2 pthread)
