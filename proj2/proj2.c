@@ -141,6 +141,15 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    for (int i = 1; i <= NH; i++){
+        pid_t id = fork();
+        if(id == 0) {
+            printf("hento vodiky prijebane tu kokotiny robi %d\n", getpid());
+            //ox_code();
+            exit(0);
+        }
+    }
+
     //printf("jo, tak takhle nejak to je %d\n", getpid());
     //printf("NO is: %ld\n", NO);
     //printf("NH is: %ld\n", NH);
