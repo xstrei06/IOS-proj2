@@ -7,6 +7,6 @@ OBJS=proj2.o
 $(EXEC): $(OBJS)
 	$(CC) $(OBJS) -o $(EXEC) $(LDLIBS)
 %.o: %.c
-	$(CC) $(CFLAGS) -c $^ -o $@ $(LDLIBS)
+	$(CC) $(CFLAGS) -c $^ -o $@
 clean:
 	rm $(OBJS) $(EXEC)
