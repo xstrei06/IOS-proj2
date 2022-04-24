@@ -16,6 +16,7 @@ sem_t *oxyQueue;
 sem_t *hydroQueue;
 sem_t *mutex2;
 sem_t *queue_barrier;
+//sem_t *wait_for_ox;
 
 //output file
 FILE *out;
@@ -76,6 +77,15 @@ int sems_init(){
     else if(sem_init(queue_barrier, 1, 0) == -1){
         return 2;
     }
+    /*
+    wait_for_ox = mmap(NULL, sizeof(sem_t), PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED, -1, 0);
+    if(wait_for_ox == MAP_FAILED){
+        return 1;
+    }
+    else if(sem_init(wait_for_ox, 1, 0) == -1){
+        return 2;
+    }
+     */
     return 0;
 }
 
@@ -87,6 +97,7 @@ void sems_dest(){
     munmap(barrier2, sizeof(sem_t));
     munmap(mutex2, sizeof(sem_t));
     munmap(queue_barrier, sizeof(sem_t));
+    //munmap(wait_for_ox, sizeof(sem_t));
 
     sem_destroy(mutex);
     sem_destroy(oxyQueue);
@@ -95,6 +106,7 @@ void sems_dest(){
     sem_destroy(barrier2);
     sem_destroy(mutex2);
     sem_destroy(queue_barrier);
+    //sem_destroy(wait_for_ox);
 }
 
 int create_shmem(long NO, long NH, int **oxygen, int **hydrogen, int **line_num, int **noM, int **count, int **NH_remaining, int **NO_remaining, int **atoms){
@@ -162,26 +174,26 @@ void clear_shmem(int **oxygen, int **hydrogen, int **line_num, int **noM, int **
 void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_num, int *noM, int *count, const int *NH_remaining, int *NO_remaining, int *atoms){
     srandom(getpid() * time(NULL)); //for truly random number generating
 
-    sem_wait(mutex);
+    sem_wait(mutex2);
     *atoms += 1;
-    sem_post(mutex);
+    sem_post(mutex2);
     if(*atoms == (*NH_remaining + *NO_remaining)){
         sem_post(queue_barrier);
     }
     sem_wait(queue_barrier);
     sem_post(queue_barrier);
 
-    sem_wait(mutex);
+    sem_wait(mutex2);
     fprintf(out,"%d: O %d: started\n", *line_num, idO);
     fflush(out);
     *line_num += 1;
-    sem_post(mutex);
+    sem_post(mutex2);
     usleep((random()%(TI+1)) * 1000);
-    sem_wait(mutex);
+    sem_wait(mutex2);
     fprintf(out,"%d: O %d: going to queue\n", *line_num, idO);
     fflush(out);
     *line_num += 1;
-    sem_post(mutex);
+    sem_post(mutex2);
 
     sem_wait(mutex);
     *oxygen += 1;
@@ -194,14 +206,24 @@ void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_n
     }
     else{
         sem_post(mutex);
+        if(*NH_remaining <= 1 || *NO_remaining < 1){
+            for(int i = 0; i < *NO_remaining; i++) {
+                sem_post(oxyQueue);
+            }
+            for(int i = 0; i < *NH_remaining; i++) {
+                sem_post(hydroQueue);
+            }
+        }
     }
 
     sem_wait(oxyQueue);
 
     if(*NH_remaining <= 1) {
+        sem_wait(mutex2);
         fprintf(out,"%d: O %d: not enough H\n", *line_num, idO);
         fflush(out);
         *line_num += 1;
+        sem_post(mutex2);
         exit(0);
     }
 
@@ -210,7 +232,6 @@ void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_n
     fflush(out);
     *line_num += 1;
     *count += 1;
-
     if (*count == 3){
         sem_wait(barrier2);
         sem_post(barrier1);
@@ -224,6 +245,8 @@ void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_n
     usleep((random()%(TB+1)) * 1000);
     fprintf(out,"%d: O %d: molecule %d created\n", *line_num, idO, *noM);
     fflush(out);
+    //sem_post(wait_for_ox);
+    //sem_post(wait_for_ox);
     *line_num += 1;
     *count -= 1;
     if (*count == 0){
@@ -240,36 +263,39 @@ void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_n
 
     sem_post(mutex);
 
-    if(*NH_remaining <= 1) {
+    if(*NH_remaining <= 1 || *NO_remaining < 1) {
         for(int i = 0; i < *NO_remaining; i++) {
             sem_post(oxyQueue);
+        }
+        for(int i = 0; i < *NH_remaining; i++){
+            sem_post(hydroQueue);
         }
     }
 }
 
-void hyd_queue(const int idH, long TI, long TB, int *oxygen, int *hydrogen, int *line_num, const int *noM, int *count, int *NH_remaining, const int *NO_remaining, int *atoms){
+void hyd_queue(const int idH, long TI, int *oxygen, int *hydrogen, int *line_num, const int *noM, int *count, int *NH_remaining, const int *NO_remaining, int *atoms){
     srandom(getpid() * time(NULL)); //for truly random number generating
 
-    sem_wait(mutex);
+    sem_wait(mutex2);
     *atoms += 1;
-    sem_post(mutex);
+    sem_post(mutex2);
     if(*atoms == (*NH_remaining + *NO_remaining)){
         sem_post(queue_barrier);
     }
     sem_wait(queue_barrier);
     sem_post(queue_barrier);
 
-    sem_wait(mutex);
+    sem_wait(mutex2);
     fprintf(out,"%d: H %d: started\n", *line_num, idH);
     fflush(out);
     *line_num += 1;
-    sem_post(mutex);
+    sem_post(mutex2);
     usleep((random()%(TI+1)) * 1000);
-    sem_wait(mutex);
+    sem_wait(mutex2);
     fprintf(out,"%d: H %d: going to queue\n", *line_num, idH);
     fflush(out);
     *line_num += 1;
-    sem_post(mutex);
+    sem_post(mutex2);
 
     sem_wait(mutex);
     *hydrogen += 1;
@@ -287,9 +313,11 @@ void hyd_queue(const int idH, long TI, long TB, int *oxygen, int *hydrogen, int 
     sem_wait(hydroQueue);
 
     if(*NH_remaining <= 1 || *NO_remaining < 1){
+        sem_wait(mutex2);
         fprintf(out,"%d: H %d: not enough O or H\n", *line_num, idH);
         fflush(out);
         *line_num += 1;
+        sem_post(mutex2);
         exit(0);
     }
 
@@ -307,8 +335,8 @@ void hyd_queue(const int idH, long TI, long TB, int *oxygen, int *hydrogen, int 
     sem_wait(barrier1);
     sem_post(barrier1);
 
+    //sem_wait(wait_for_ox);
     sem_wait(mutex2);
-    usleep((random()%(TB+1)) * 1000);
     fprintf(out,"%d: H %d: molecule %d created\n", *line_num, idH, *noM);
     fflush(out);
     *line_num += 1;
@@ -346,6 +374,23 @@ int check_args(int argc, char *argv[], long *NO, long *NH, long *TI, long *TB){
     char *i;
     char *b;
 
+    if(strcmp(argv[1], "") == 0){
+        fprintf(stderr, "Error: Invalid argument NO.\n");
+        return 1;
+    }
+    else if(strcmp(argv[2], "") == 0){
+        fprintf(stderr, "Error: Invalid argument NH.\n");
+        return 1;
+    }
+    else if(strcmp(argv[3], "") == 0){
+        fprintf(stderr, "Error: Invalid argument TI.\n");
+        return 1;
+    }
+    else if(strcmp(argv[4], "") == 0){
+        fprintf(stderr, "Error: Invalid argument TB.\n");
+        return 1;
+    }
+
     //getting numbers from passed arguments
     *NO = strtol((const char*) argv[1], &o, 10);
     *NH = strtol((const char*) argv[2], &h, 10);
@@ -354,12 +399,12 @@ int check_args(int argc, char *argv[], long *NO, long *NH, long *TI, long *TB){
 
     //check whether argument NO has correct value
     if (*NO <= 0){
-        fprintf(stderr,"Error:  Argument NO cannot be negative.\n");
+        fprintf(stderr,"Error:  Argument NO has to be greater than zero.\n");
         return 1;
     }
     //check whether argument NH has correct value
     if (*NH <= 0){
-        fprintf(stderr,"Error:  Argument NH cannot be negative.\n");
+        fprintf(stderr,"Error:  Argument NH ha to be greater than zero.\n");
         return 1;
     }
     //check whether argument TI has correct value
@@ -448,7 +493,7 @@ int main(int argc, char *argv[]) {
         idH++;
         pid_t id = fork();
         if(id == 0) {
-            hyd_queue(idH, TI, TB, oxygen, hydrogen, line_num, noM, count, NH_remaining, NO_remaining, atoms);
+            hyd_queue(idH, TI, oxygen, hydrogen, line_num, noM, count, NH_remaining, NO_remaining, atoms);
             exit(0);
         }
         else if(id == -1){
