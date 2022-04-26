@@ -96,14 +96,6 @@ int sems_init(){
  */
 
 void sems_dest(){
-    munmap(mutex, sizeof(sem_t));
-    munmap(oxyQueue, sizeof(sem_t));
-    munmap(hydroQueue, sizeof(sem_t));
-    munmap(barrier1, sizeof(sem_t));
-    munmap(barrier2, sizeof(sem_t));
-    munmap(mutex2, sizeof(sem_t));
-    munmap(queue_barrier, sizeof(sem_t));
-
     sem_destroy(mutex);
     sem_destroy(oxyQueue);
     sem_destroy(hydroQueue);
@@ -111,6 +103,14 @@ void sems_dest(){
     sem_destroy(barrier2);
     sem_destroy(mutex2);
     sem_destroy(queue_barrier);
+
+    munmap(mutex, sizeof(sem_t));
+    munmap(oxyQueue, sizeof(sem_t));
+    munmap(hydroQueue, sizeof(sem_t));
+    munmap(barrier1, sizeof(sem_t));
+    munmap(barrier2, sizeof(sem_t));
+    munmap(mutex2, sizeof(sem_t));
+    munmap(queue_barrier, sizeof(sem_t));
 }
 
 /**
@@ -178,7 +178,7 @@ int create_shmem(long NO, long NH, int **oxygen, int **hydrogen, int **line_num,
     **atoms = 0;
 
     *commit_genocide = mmap(NULL, sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-    if(*atoms == MAP_FAILED){
+    if(*commit_genocide == MAP_FAILED){
         return 1;
     }
     **commit_genocide = 0;
