@@ -23,6 +23,7 @@ sem_t *oxyQueue;
 sem_t *hydroQueue;
 sem_t *mutex2;
 sem_t *queue_barrier;
+sem_t *mutex3;
 
 //output file
 FILE *out;
@@ -88,6 +89,14 @@ int sems_init(){
     else if(sem_init(queue_barrier, 1, 0) == -1){
         return 2;
     }
+
+    mutex3 = mmap(NULL, sizeof(sem_t), PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED, -1, 0);
+    if(mutex3 == MAP_FAILED){
+        return 1;
+    }
+    else if(sem_init(mutex3, 1, 1) == -1){
+        return 2;
+    }
     return 0;
 }
 
@@ -103,6 +112,7 @@ void sems_dest(){
     sem_destroy(barrier2);
     sem_destroy(mutex2);
     sem_destroy(queue_barrier);
+    sem_destroy(mutex3);
 
     munmap(mutex, sizeof(sem_t));
     munmap(oxyQueue, sizeof(sem_t));
@@ -111,6 +121,7 @@ void sems_dest(){
     munmap(barrier2, sizeof(sem_t));
     munmap(mutex2, sizeof(sem_t));
     munmap(queue_barrier, sizeof(sem_t));
+    munmap(mutex3, sizeof(sem_t));
 }
 
 /**
@@ -438,7 +449,9 @@ void hyd_queue(const int idH, long TI, int *oxygen, int *hydrogen, int *line_num
     sem_wait(barrier2);
     sem_post(barrier2);
 
+    sem_wait(mutex3);
     *NH_remaining -= 1; //decrease number of remaining hydrogen atoms
+    sem_post(mutex3);
 
     //if there are not enough atoms to create another molecule, release all remaining atoms from the queue
     if(*NH_remaining <= 1 || *NO_remaining < 1){
