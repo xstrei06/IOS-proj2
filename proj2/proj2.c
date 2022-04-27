@@ -250,10 +250,10 @@ void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_n
     sem_wait(queue_barrier);
     sem_post(queue_barrier);
 
-    if(*terminate_all == 1){ //if fork failed, kill all children
+    /*if(*terminate_all == 1){ //if fork failed, kill all children
         fclose(out);
         exit(1);
-    }
+    }*/
 
     //start of oxygen and joining the queue
     sem_wait(mutex2);
@@ -267,6 +267,11 @@ void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_n
     fflush(out);
     *line_num += 1;
     sem_post(mutex2);
+
+    if(*terminate_all == 1){ //if fork failed, kill all children
+        fclose(out);
+        exit(1);
+    }
 
     //if there are at least 1 atom of oxygen and 2 atoms of hydrogen in the queue, they start creating a molecule
     sem_wait(mutex);
@@ -294,6 +299,11 @@ void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_n
 
     sem_wait(oxyQueue); //queue of oxygen atoms waiting to be released to create a molecule
 
+    if(*terminate_all == 1){ //if fork failed, kill all children
+        fclose(out);
+        exit(1);
+    }
+
     if(*NH_remaining <= 1) { //checks, whether there is enough atoms of hydrogen to create a molecule
                              //if not, prints out status information and process ends
         sem_wait(mutex2);
@@ -316,6 +326,11 @@ void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_n
     }
     sem_post(mutex2);
 
+    if(*terminate_all == 1){ //if fork failed, kill all children
+        fclose(out);
+        exit(1);
+    }
+
     sem_wait(barrier1);
     sem_post(barrier1);
 
@@ -330,6 +345,11 @@ void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_n
         sem_post(barrier2);
     }
     sem_post(mutex2);
+
+    if(*terminate_all == 1){ //if fork failed, kill all children
+        fclose(out);
+        exit(1);
+    }
 
     sem_wait(barrier2);
     sem_post(barrier2);
@@ -379,10 +399,10 @@ void hyd_queue(const int idH, long TI, int *oxygen, int *hydrogen, int *line_num
     sem_wait(queue_barrier);
     sem_post(queue_barrier);
 
-    if(*terminate_all == 1){ //if fork failed, kill all children
+    /*if(*terminate_all == 1){ //if fork failed, kill all children
         fclose(out);
         exit(1);
-    }
+    }*/
 
     //start of hydrogen and joining the queue
     sem_wait(mutex2);
@@ -397,6 +417,11 @@ void hyd_queue(const int idH, long TI, int *oxygen, int *hydrogen, int *line_num
     *line_num += 1;
     sem_post(mutex2);
 
+    if(*terminate_all == 1){ //if fork failed, kill all children
+        fclose(out);
+        exit(1);
+    }
+
     //if there are at least 1 atom of oxygen and 2 atoms of hydrogen in the queue, they start creating a molecule
     sem_wait(mutex);
     *hydrogen += 1;
@@ -409,6 +434,11 @@ void hyd_queue(const int idH, long TI, int *oxygen, int *hydrogen, int *line_num
     }
     else{ //if there is not yet enough atoms in the queue needed for creating a molecule, release mutex and wait for more atoms
         sem_post(mutex);
+    }
+
+    if(*terminate_all == 1){ //if fork failed, kill all children
+        fclose(out);
+        exit(1);
     }
 
     sem_wait(hydroQueue); //queue of hydrogen atoms waiting to be released to create a molecule
@@ -435,6 +465,11 @@ void hyd_queue(const int idH, long TI, int *oxygen, int *hydrogen, int *line_num
     }
     sem_post(mutex2);
 
+    if(*terminate_all == 1){ //if fork failed, kill all children
+        fclose(out);
+        exit(1);
+    }
+
     sem_wait(barrier1);
     sem_post(barrier1);
 
@@ -448,6 +483,11 @@ void hyd_queue(const int idH, long TI, int *oxygen, int *hydrogen, int *line_num
         sem_post(barrier2);
     }
     sem_post(mutex2);
+
+    if(*terminate_all == 1){ //if fork failed, kill all children
+        fclose(out);
+        exit(1);
+    }
 
     sem_wait(barrier2);
     sem_post(barrier2);
