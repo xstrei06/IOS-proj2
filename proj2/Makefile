@@ -1,6 +1,6 @@
 EXEC=proj2
 CC=gcc
-CFLAGS=-std=gnu99 -pthread -Wall -Wextra -Werror -pedantic
+CFLAGS=-std=gnu99 -pthread -Wall -Wextra -pedantic
 LDLIBS=-lpthread
 OBJS=proj2.o
 

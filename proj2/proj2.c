@@ -98,7 +98,7 @@ int sems_init(){
         return 2;
     }
     return 0;
-}
+} //function initializing shared memory for semaphores and checking for errors
 
 /**
  * @brief function for clearing shared semaphore memory and destroying semaphores
@@ -139,7 +139,7 @@ void sems_dest(){
  * @return returns 1 if any memory mapping failed, otherwise returns 0
  */
 
-int create_shmem(long NO, long NH, int **oxygen, int **hydrogen, int **line_num, int **noM, int **count, int **NH_remaining, int **NO_remaining, int **atoms, int **commit_genocide){
+int create_shmem(long NO, long NH, int **oxygen, int **hydrogen, int **line_num, int **noM, int **count, int **NH_remaining, int **NO_remaining, int **atoms, int **terminate_all){
     *NO_remaining = mmap(NULL, sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     if(*NO_remaining == MAP_FAILED){
         return 1;
@@ -188,14 +188,14 @@ int create_shmem(long NO, long NH, int **oxygen, int **hydrogen, int **line_num,
     }
     **atoms = 0;
 
-    *commit_genocide = mmap(NULL, sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-    if(*commit_genocide == MAP_FAILED){
+    *terminate_all = mmap(NULL, sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    if(*terminate_all == MAP_FAILED){
         return 1;
     }
-    **commit_genocide = 0;
+    **terminate_all = 0;
 
     return 0;
-}
+} //function initializing shared memory variables and checking for errors
 
 /**
  * @brief Function clearing memory of shared variables
@@ -207,10 +207,10 @@ int create_shmem(long NO, long NH, int **oxygen, int **hydrogen, int **line_num,
  * @param NH_remaining
  * @param NO_remaining
  * @param atoms
- * @param commit_genocide
+ * @param terminate_all
  */
 
-void clear_shmem(int **oxygen, int **hydrogen, int **line_num, int **noM, int **count, int **NH_remaining, int **NO_remaining, int **atoms, int **commit_genocide) {
+void clear_shmem(int **oxygen, int **hydrogen, int **line_num, int **noM, int **count, int **NH_remaining, int **NO_remaining, int **atoms, int **terminate_all) {
     munmap(*oxygen, sizeof(int));
     munmap(*hydrogen, sizeof(int));
     munmap(*line_num, sizeof(int));
@@ -219,7 +219,7 @@ void clear_shmem(int **oxygen, int **hydrogen, int **line_num, int **noM, int **
     munmap(*NH_remaining, sizeof(int));
     munmap(*NO_remaining, sizeof(int));
     munmap(*atoms, sizeof(int));
-    munmap(*commit_genocide, sizeof(int));
+    munmap(*terminate_all, sizeof(int));
 }
 
 /**
@@ -234,10 +234,10 @@ void clear_shmem(int **oxygen, int **hydrogen, int **line_num, int **noM, int **
  * @param NH_remaining remaining number of hydrogen atoms
  * @param NO_remaining remaining number of oxygen atoms
  * @param atoms total number of created processes
- * @param commit_genocide flag for failed fork and terminating all children
+ * @param terminate_all flag for failed fork and terminating all children
  */
 
-void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_num, int *noM, int *count, const int *NH_remaining, int *NO_remaining, int *atoms, const int *commit_genocide){
+void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_num, int *noM, int *count, const int *NH_remaining, int *NO_remaining, int *atoms, const int *terminate_all){
     srandom(getpid() * time(NULL)); //for truly random number generating
 
     //barrier waiting for all processes to be created before starting
@@ -250,7 +250,8 @@ void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_n
     sem_wait(queue_barrier);
     sem_post(queue_barrier);
 
-    if(*commit_genocide == 1){ //if fork failed, kill all children
+    if(*terminate_all == 1){ //if fork failed, kill all children
+        fclose(out);
         exit(1);
     }
 
@@ -347,7 +348,8 @@ void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_n
             sem_post(hydroQueue);
         }
     }
-}
+    fclose(out);
+} //function simulating oxygen queue
 
 /**
  * @brief Function simulating hydrogen queue
@@ -361,10 +363,10 @@ void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_n
  * @param NH_remaining remaining number of hydrogen atoms
  * @param NO_remaining remaining number of oxygen atoms
  * @param atoms total number of created processes
- * @param commit_genocide flag for failed fork and terminating all children
+ * @param terminate_all flag for failed fork and terminating all children
  */
 
-void hyd_queue(const int idH, long TI, int *oxygen, int *hydrogen, int *line_num, const int *noM, int *count, int *NH_remaining, const int *NO_remaining, int *atoms, const int *commit_genocide){
+void hyd_queue(const int idH, long TI, int *oxygen, int *hydrogen, int *line_num, const int *noM, int *count, int *NH_remaining, const int *NO_remaining, int *atoms, const int *terminate_all){
     srandom(getpid() * time(NULL)); //for truly random number generating
 
     //barrier waiting for all processes to be created before starting
@@ -377,7 +379,8 @@ void hyd_queue(const int idH, long TI, int *oxygen, int *hydrogen, int *line_num
     sem_wait(queue_barrier);
     sem_post(queue_barrier);
 
-    if(*commit_genocide == 1){ //if fork failed, kill all children
+    if(*terminate_all == 1){ //if fork failed, kill all children
+        fclose(out);
         exit(1);
     }
 
@@ -462,7 +465,8 @@ void hyd_queue(const int idH, long TI, int *oxygen, int *hydrogen, int *line_num
             sem_post(hydroQueue);
         }
     }
-}
+    fclose(out);
+} //function simulating hydrogen queue
 
 /**
  * @brief Function for controlling program arguments
@@ -537,7 +541,7 @@ int check_args(int argc, char *argv[], long *NO, long *NH, long *TI, long *TB){
         return 1;
     }
     return 0;
-}
+} //function checking program arguments
 
 int main(int argc, char *argv[]) {
 
@@ -560,7 +564,7 @@ int main(int argc, char *argv[]) {
     int *NH_remaining = NULL;
     int *NO_remaining = NULL;
     int *atoms = NULL;
-    int *commit_genocide = NULL;
+    int *terminate_all = NULL;
 
     //check for program argument errors
     int err = check_args(argc, argv, &NO, &NH, &TI, &TB);
@@ -577,9 +581,9 @@ int main(int argc, char *argv[]) {
     setbuf(out, NULL); //sets file buffer to NULL for correct printing
 
     //initialize shared variables and check for errors
-    if(create_shmem(NO, NH, &oxygen, &hydrogen, &line_num, &noM, &count, &NH_remaining, &NO_remaining, &atoms, &commit_genocide) == 1){
+    if(create_shmem(NO, NH, &oxygen, &hydrogen, &line_num, &noM, &count, &NH_remaining, &NO_remaining, &atoms, &terminate_all) == 1){
         //if memory mapping failed, clear all already mapped memory, print error message and return
-        clear_shmem(&oxygen, &hydrogen, &line_num, &noM, &count, &NH_remaining, &NO_remaining, &atoms, &commit_genocide);
+        clear_shmem(&oxygen, &hydrogen, &line_num, &noM, &count, &NH_remaining, &NO_remaining, &atoms, &terminate_all);
         fprintf(stderr, "Error: Shared memory mapping of variables failed.\n");
         return 1;
     }
@@ -602,15 +606,16 @@ int main(int argc, char *argv[]) {
         idO++;
         pid_t id = fork();
         if(id == 0) { //child process (oxygen) goes to queue
-            ox_queue(idO, TI, TB, oxygen, hydrogen, line_num, noM, count, NH_remaining, NO_remaining, atoms, commit_genocide);
+            ox_queue(idO, TI, TB, oxygen, hydrogen, line_num, noM, count, NH_remaining, NO_remaining, atoms, terminate_all);
             exit(0); //child dies
         }
         //error checking for failed fork()
         else if(id == -1){
-            *commit_genocide = 1;
+            *terminate_all = 1;
             sem_post(queue_barrier); //release children from queue, then they die
             fprintf(stderr, "Error: Creating of oxygen %d failed.\n", idO);
             while(wait(NULL) > 0); //wait for all children to die before ending the main process
+            fclose(out);
             return 1;
         }
     }
@@ -620,15 +625,16 @@ int main(int argc, char *argv[]) {
         idH++;
         pid_t id = fork();
         if(id == 0) { //child process (hydrogen) goes to queue
-            hyd_queue(idH, TI, oxygen, hydrogen, line_num, noM, count, NH_remaining, NO_remaining, atoms, commit_genocide);
+            hyd_queue(idH, TI, oxygen, hydrogen, line_num, noM, count, NH_remaining, NO_remaining, atoms, terminate_all);
             exit(0); //child dies
         }
         //error checking for failed fork()
         else if(id == -1){
-            *commit_genocide = 1;
+            *terminate_all = 1;
             sem_post(queue_barrier); //release children from queue, then they die
             fprintf(stderr, "Error: Creating of hydrogen %d failed.\n", idH);
             while(wait(NULL) > 0); //wait for all children to die before ending the main process
+            fclose(out);
             return 1;
         }
     }
@@ -638,7 +644,7 @@ int main(int argc, char *argv[]) {
     //closing output file
     fclose(out);
     //clearing shared variable memory
-    clear_shmem(&oxygen, &hydrogen, &line_num, &noM, &count, &NH_remaining, &NO_remaining, &atoms, &commit_genocide);
+    clear_shmem(&oxygen, &hydrogen, &line_num, &noM, &count, &NH_remaining, &NO_remaining, &atoms, &terminate_all);
     //clearing shared semaphore memory and destroying semaphores
     sems_dest();
 
