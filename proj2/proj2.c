@@ -311,6 +311,7 @@ void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_n
         fflush(out);
         *line_num += 1;
         sem_post(mutex2);
+        fclose(out);
         exit(0);
     }
 
@@ -450,6 +451,7 @@ void hyd_queue(const int idH, long TI, int *oxygen, int *hydrogen, int *line_num
         fflush(out);
         *line_num += 1;
         sem_post(mutex2);
+        fclose(out);
         exit(0);
     }
 
