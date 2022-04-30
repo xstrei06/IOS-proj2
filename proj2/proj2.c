@@ -24,6 +24,7 @@ sem_t *hydroQueue;
 sem_t *mutex2;
 sem_t *queue_barrier;
 sem_t *mutex3;
+sem_t *all_queued;
 
 //output file
 FILE *out;
@@ -97,6 +98,14 @@ int sems_init(){
     else if(sem_init(mutex3, 1, 1) == -1){
         return 2;
     }
+
+    all_queued = mmap(NULL, sizeof(sem_t), PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED, -1, 0);
+    if(all_queued == MAP_FAILED){
+        return 1;
+    }
+    else if(sem_init(all_queued, 1, 0) == -1){
+        return 2;
+    }
     return 0;
 } //function initializing shared memory for semaphores and checking for errors
 
@@ -136,10 +145,12 @@ void sems_dest(){
  * @param NH_remaining
  * @param NO_remaining
  * @param atoms
+ * @param terminate_all
+ * @param to_be_enqueued
  * @return returns 1 if any memory mapping failed, otherwise returns 0
  */
 
-int create_shmem(long NO, long NH, int **oxygen, int **hydrogen, int **line_num, int **noM, int **count, int **NH_remaining, int **NO_remaining, int **atoms, int **terminate_all){
+int create_shmem(long NO, long NH, int **oxygen, int **hydrogen, int **line_num, int **noM, int **count, int **NH_remaining, int **NO_remaining, int **atoms, int **terminate_all, int **to_be_enqueued){
     *NO_remaining = mmap(NULL, sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     if(*NO_remaining == MAP_FAILED){
         return 1;
@@ -194,6 +205,12 @@ int create_shmem(long NO, long NH, int **oxygen, int **hydrogen, int **line_num,
     }
     **terminate_all = 0;
 
+    *to_be_enqueued = mmap(NULL, sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    if(*to_be_enqueued == MAP_FAILED){
+        return 1;
+    }
+    **to_be_enqueued = (int) NO + (int) NH;
+
     return 0;
 } //function initializing shared memory variables and checking for errors
 
@@ -208,9 +225,10 @@ int create_shmem(long NO, long NH, int **oxygen, int **hydrogen, int **line_num,
  * @param NO_remaining
  * @param atoms
  * @param terminate_all
+ * @param to_be_enqueued
  */
 
-void clear_shmem(int **oxygen, int **hydrogen, int **line_num, int **noM, int **count, int **NH_remaining, int **NO_remaining, int **atoms, int **terminate_all) {
+void clear_shmem(int **oxygen, int **hydrogen, int **line_num, int **noM, int **count, int **NH_remaining, int **NO_remaining, int **atoms, int **terminate_all, int **to_be_enqueued) {
     munmap(*oxygen, sizeof(int));
     munmap(*hydrogen, sizeof(int));
     munmap(*line_num, sizeof(int));
@@ -220,6 +238,7 @@ void clear_shmem(int **oxygen, int **hydrogen, int **line_num, int **noM, int **
     munmap(*NO_remaining, sizeof(int));
     munmap(*atoms, sizeof(int));
     munmap(*terminate_all, sizeof(int));
+    munmap(*to_be_enqueued, sizeof(int));
 }
 
 /**
@@ -235,9 +254,10 @@ void clear_shmem(int **oxygen, int **hydrogen, int **line_num, int **noM, int **
  * @param NO_remaining remaining number of oxygen atoms
  * @param atoms total number of created processes
  * @param terminate_all flag for failed fork and terminating all children
+ * @param to_be_enqueued number of atoms yet to be enqueued
  */
 
-void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_num, int *noM, int *count, const int *NH_remaining, int *NO_remaining, int *atoms, const int *terminate_all){
+void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_num, int *noM, int *count, const int *NH_remaining, int *NO_remaining, int *atoms, const int *terminate_all, int *to_be_enqueued){
     srandom(getpid() * time(NULL)); //for truly random number generating
 
     //barrier waiting for all processes to be created before starting
@@ -250,11 +270,6 @@ void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_n
     sem_wait(queue_barrier);
     sem_post(queue_barrier);
 
-    /*if(*terminate_all == 1){ //if fork failed, kill all children
-        fclose(out);
-        exit(1);
-    }*/
-
     //start of oxygen and joining the queue
     sem_wait(mutex2);
     fprintf(out,"%d: O %d: started\n", *line_num, idO);
@@ -265,6 +280,10 @@ void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_n
     sem_wait(mutex2);
     fprintf(out,"%d: O %d: going to queue\n", *line_num, idO);
     fflush(out);
+    *to_be_enqueued -= 1;
+    if(*to_be_enqueued == 0){
+        sem_post(all_queued);
+    }
     *line_num += 1;
     sem_post(mutex2);
 
@@ -306,6 +325,9 @@ void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_n
 
     if(*NH_remaining <= 1) { //checks, whether there is enough atoms of hydrogen to create a molecule
                              //if not, prints out status information and process ends
+                             //also waits for all atoms to get into queue first
+        sem_wait(all_queued);
+        sem_post(all_queued);
         sem_wait(mutex2);
         fprintf(out,"%d: O %d: not enough H\n", *line_num, idO);
         fflush(out);
@@ -385,9 +407,10 @@ void ox_queue(int idO, long TI, long TB, int *oxygen, int *hydrogen, int *line_n
  * @param NO_remaining remaining number of oxygen atoms
  * @param atoms total number of created processes
  * @param terminate_all flag for failed fork and terminating all children
+ * @param to_be_enqueued number of atoms yet to be enqueued
  */
 
-void hyd_queue(const int idH, long TI, int *oxygen, int *hydrogen, int *line_num, const int *noM, int *count, int *NH_remaining, const int *NO_remaining, int *atoms, const int *terminate_all){
+void hyd_queue(const int idH, long TI, int *oxygen, int *hydrogen, int *line_num, const int *noM, int *count, int *NH_remaining, const int *NO_remaining, int *atoms, const int *terminate_all, int *to_be_enqueued){
     srandom(getpid() * time(NULL)); //for truly random number generating
 
     //barrier waiting for all processes to be created before starting
@@ -400,11 +423,6 @@ void hyd_queue(const int idH, long TI, int *oxygen, int *hydrogen, int *line_num
     sem_wait(queue_barrier);
     sem_post(queue_barrier);
 
-    /*if(*terminate_all == 1){ //if fork failed, kill all children
-        fclose(out);
-        exit(1);
-    }*/
-
     //start of hydrogen and joining the queue
     sem_wait(mutex2);
     fprintf(out,"%d: H %d: started\n", *line_num, idH);
@@ -415,6 +433,10 @@ void hyd_queue(const int idH, long TI, int *oxygen, int *hydrogen, int *line_num
     sem_wait(mutex2);
     fprintf(out,"%d: H %d: going to queue\n", *line_num, idH);
     fflush(out);
+    *to_be_enqueued -= 1;
+    if(*to_be_enqueued == 0){
+        sem_post(all_queued);
+    }
     *line_num += 1;
     sem_post(mutex2);
 
@@ -446,6 +468,9 @@ void hyd_queue(const int idH, long TI, int *oxygen, int *hydrogen, int *line_num
 
     if(*NH_remaining <= 1 || *NO_remaining < 1){ //checks, whether there is enough atoms of hydrogen to create a molecule
                                                  //if not, prints out status information and process ends
+                                                 //also waits for all atoms to get into queue first
+        sem_wait(all_queued);
+        sem_post(all_queued);
         sem_wait(mutex2);
         fprintf(out,"%d: H %d: not enough O or H\n", *line_num, idH);
         fflush(out);
@@ -607,6 +632,7 @@ int main(int argc, char *argv[]) {
     int *NO_remaining = NULL;
     int *atoms = NULL;
     int *terminate_all = NULL;
+    int *to_be_enqueued = NULL;
 
     //check for program argument errors
     int err = check_args(argc, argv, &NO, &NH, &TI, &TB);
@@ -623,9 +649,9 @@ int main(int argc, char *argv[]) {
     setbuf(out, NULL); //sets file buffer to NULL for correct printing
 
     //initialize shared variables and check for errors
-    if(create_shmem(NO, NH, &oxygen, &hydrogen, &line_num, &noM, &count, &NH_remaining, &NO_remaining, &atoms, &terminate_all) == 1){
+    if(create_shmem(NO, NH, &oxygen, &hydrogen, &line_num, &noM, &count, &NH_remaining, &NO_remaining, &atoms, &terminate_all, &to_be_enqueued) == 1){
         //if memory mapping failed, clear all already mapped memory, print error message and return
-        clear_shmem(&oxygen, &hydrogen, &line_num, &noM, &count, &NH_remaining, &NO_remaining, &atoms, &terminate_all);
+        clear_shmem(&oxygen, &hydrogen, &line_num, &noM, &count, &NH_remaining, &NO_remaining, &atoms, &terminate_all, &to_be_enqueued);
         fprintf(stderr, "Error: Shared memory mapping of variables failed.\n");
         return 1;
     }
@@ -648,7 +674,7 @@ int main(int argc, char *argv[]) {
         idO++;
         pid_t id = fork();
         if(id == 0) { //child process (oxygen) goes to queue
-            ox_queue(idO, TI, TB, oxygen, hydrogen, line_num, noM, count, NH_remaining, NO_remaining, atoms, terminate_all);
+            ox_queue(idO, TI, TB, oxygen, hydrogen, line_num, noM, count, NH_remaining, NO_remaining, atoms, terminate_all, to_be_enqueued);
             exit(0); //child dies
         }
         //error checking for failed fork()
@@ -667,7 +693,7 @@ int main(int argc, char *argv[]) {
         idH++;
         pid_t id = fork();
         if(id == 0) { //child process (hydrogen) goes to queue
-            hyd_queue(idH, TI, oxygen, hydrogen, line_num, noM, count, NH_remaining, NO_remaining, atoms, terminate_all);
+            hyd_queue(idH, TI, oxygen, hydrogen, line_num, noM, count, NH_remaining, NO_remaining, atoms, terminate_all, to_be_enqueued);
             exit(0); //child dies
         }
         //error checking for failed fork()
@@ -686,7 +712,7 @@ int main(int argc, char *argv[]) {
     //closing output file
     fclose(out);
     //clearing shared variable memory
-    clear_shmem(&oxygen, &hydrogen, &line_num, &noM, &count, &NH_remaining, &NO_remaining, &atoms, &terminate_all);
+    clear_shmem(&oxygen, &hydrogen, &line_num, &noM, &count, &NH_remaining, &NO_remaining, &atoms, &terminate_all, &to_be_enqueued);
     //clearing shared semaphore memory and destroying semaphores
     sems_dest();
 
