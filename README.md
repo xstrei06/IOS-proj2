@@ -1,2 +1,6 @@
 # ios-proj2
-Projekt 2 do predmetu IOS
+FIT VUT 2022
+IOS Project 2
+
+semaphores - building H2O
+15/15
